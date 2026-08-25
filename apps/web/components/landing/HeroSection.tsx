@@ -1,8 +1,11 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
 
 export function HeroSection() {
+  const router = useRouter();
+
   return (
     <section className="flex flex-col items-center justify-center gap-8 py-20 px-4">
       {/* Title */}
@@ -35,6 +38,7 @@ export function HeroSection() {
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ delay: 0.5, type: "spring", damping: 15 }}
+        onClick={() => router.push("/arena")}
         className="relative px-10 py-4 rounded-2xl font-mono font-semibold text-sm uppercase tracking-wider text-void bg-aura hover:bg-aura-bright transition-all duration-200 shadow-[0_0_24px_oklch(0.78_0.15_85_/_0.3)] hover:shadow-[0_0_36px_oklch(0.78_0.15_85_/_0.5)]"
       >
         ENTER THE ARENA
