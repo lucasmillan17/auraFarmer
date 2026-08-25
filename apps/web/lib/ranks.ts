@@ -11,7 +11,7 @@ export const RANKS = [
 export type RankName = (typeof RANKS)[number]["name"];
 
 interface Rank {
-  name: string;
+  name: RankName;
   minElo: number;
   icon: string;
   mono: string;
