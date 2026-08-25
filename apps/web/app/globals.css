@@ -1,0 +1,155 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════
+   AURA ARENA — Design Tokens
+   Monochrome base + single aura accent (gold)
+   ═══════════════════════════════════════════════════════ */
+
+@theme inline {
+  /* ─── Monochrome Surface Scale ─── */
+  --color-void: #050507;
+  --color-surface: #0C0C10;
+  --color-surface-elevated: #141418;
+  --color-border: #1E1E24;
+  --color-border-strong: #2A2A32;
+
+  /* ─── Monochrome Text Scale ─── */
+  --color-muted: #4A4A55;
+  --color-text-secondary: #8A8A95;
+  --color-text: #D4D4DC;
+  --color-text-bright: #EEEEF0;
+
+  /* ─── Aura Accent (ONLY during scoring/duel) ─── */
+  --color-aura: oklch(0.78 0.15 85);
+  --color-aura-glow: oklch(0.78 0.15 85 / 0.3);
+  --color-aura-dim: oklch(0.55 0.10 85);
+  --color-aura-bright: oklch(0.88 0.18 85);
+
+  /* ─── Radii ─── */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.5rem;
+  --radius-full: 9999px;
+
+  /* ─── Fonts ─── */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
+
+  /* ─── Shadows (subtle, monochrome only) ─── */
+  --shadow-glow-aura: 0 0 20px oklch(0.78 0.15 85 / 0.25);
+  --shadow-glow-aura-strong: 0 0 40px oklch(0.78 0.15 85 / 0.4);
+  --shadow-surface: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Base Layer
+   ═══════════════════════════════════════════════════════ */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: var(--color-border);
+  }
+
+  html {
+    background-color: var(--color-void);
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-void);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background-color: oklch(0.78 0.15 85 / 0.3);
+    color: var(--color-text-bright);
+  }
+
+  /* Scrollbar — subtle, monochrome */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-void);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-muted);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Utility Classes
+   ═══════════════════════════════════════════════════════ */
+
+@layer utilities {
+  /* Glassmorphism card */
+  .glass {
+    background-color: oklch(0.08 0 0 / 0.6);
+    backdrop-filter: blur(12px) saturate(120%);
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+    border: 1px solid var(--color-border);
+  }
+
+  /* Glass card with stronger blur */
+  .glass-strong {
+    background-color: oklch(0.08 0 0 / 0.8);
+    backdrop-filter: blur(24px) saturate(150%);
+    -webkit-backdrop-filter: blur(24px) saturate(150%);
+    border: 1px solid var(--color-border);
+  }
+
+  /* Aura glow border — only during duel */
+  .aura-border {
+    border: 1px solid var(--color-aura);
+    box-shadow: var(--shadow-glow-aura);
+  }
+
+  /* Aura text glow */
+  .aura-glow {
+    text-shadow: 0 0 12px var(--color-aura-glow),
+                 0 0 30px oklch(0.78 0.15 85 / 0.15);
+  }
+
+  /* Text with subtle neon effect */
+  .text-glow {
+    text-shadow: 0 0 8px currentColor;
+  }
+
+  /* Hairline border */
+  .hairline {
+    border: 0.5px solid var(--color-border);
+  }
+
+  /* Fade in animation */
+  .fade-in {
+    animation: fadeIn 0.5s ease-out;
+  }
+
+  /* Pulse aura */
+  .pulse-aura {
+    animation: pulseAura 2s ease-in-out infinite;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseAura {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
