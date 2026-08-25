@@ -9,7 +9,7 @@ const RANKS = [
 ] as const;
 
 export function getRankName(elo: number): string {
-  let rank = RANKS[0].name;
+  let rank: string = RANKS[0].name;
   for (const r of RANKS) {
     if (elo >= r.minElo) rank = r.name;
     else break;
