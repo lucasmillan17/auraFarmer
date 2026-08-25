@@ -15,7 +15,7 @@ const allowedOrigins = (config.corsOrigin || "").split(",").map((s) => s.trim())
 function isOriginAllowed(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void): void {
   if (!origin) return callback(null, true);
   if (allowedOrigins.includes(origin)) return callback(null, true);
-  if (/^https?:\/\/(localhost|192\.168\.\d+\.\d+)(:\d+)?$/.test(origin)) return callback(null, true);
+  if (/^https?:\/\/(localhost|192\.168\.\d+\.\d+|[\w-]+\.vercel\.app)(:\d+)?$/.test(origin)) return callback(null, true);
   callback(new Error("CORS blocked"));
 }
 
