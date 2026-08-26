@@ -32,14 +32,23 @@ export function useWebRTC({
   const [isConnected, setIsConnected] = useState(false);
   const pcRef = useRef<RTCPeerConnection | null>(null);
 
+  const roomIdRef = useRef(roomId);
+  roomIdRef.current = roomId;
+
+  const localStreamRef = useRef(localStream);
+  localStreamRef.current = localStream;
+
+  const onRemoteStreamRef = useRef(onRemoteStream);
+  onRemoteStreamRef.current = onRemoteStream;
+
   const createPeer = useCallback(() => {
     const pc = new RTCPeerConnection(ICE_SERVERS);
     pcRef.current = pc;
 
     pc.onicecandidate = (event) => {
-      if (event.candidate && roomId) {
+      if (event.candidate && roomIdRef.current) {
         getSocket().emit("webrtc:ice-candidate", {
-          roomId,
+          roomId: roomIdRef.current,
           candidate: event.candidate,
         });
       }
@@ -48,7 +57,7 @@ export function useWebRTC({
     pc.ontrack = (event) => {
       const stream = event.streams[0];
       setRemoteStream(stream);
-      onRemoteStream(stream);
+      onRemoteStreamRef.current(stream);
       setIsConnected(true);
     };
 
@@ -58,39 +67,34 @@ export function useWebRTC({
       }
     };
 
-    if (localStream) {
-      localStream.getTracks().forEach((track) => {
-        pc.addTrack(track, localStream);
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => {
+        pc.addTrack(track, localStreamRef.current!);
       });
     }
 
     return pc;
-  }, [localStream, roomId, onRemoteStream]);
+  }, []);
 
   const createOffer = useCallback(async () => {
     const pc = createPeer();
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    if (roomId) {
-      getSocket().emit("webrtc:offer", { roomId, sdp: offer });
+    if (roomIdRef.current) {
+      getSocket().emit("webrtc:offer", {
+        roomId: roomIdRef.current,
+        sdp: offer,
+      });
     }
-  }, [createPeer, roomId]);
+  }, [createPeer]);
 
   const createAnswer = useCallback(async () => {
-    const pc = createPeer();
-    const offer = await new Promise<RTCSessionDescriptionInit>((resolve) => {
-      getSocket().once("webrtc:offer", (data) => resolve(data.sdp));
-    });
-    await pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
+    // No-op: the persistent socket listener in the useEffect below
+    // handles incoming offers and creates answers automatically.
+  }, []);
 
-    if (roomId) {
-      getSocket().emit("webrtc:answer", { roomId, sdp: answer });
-    }
-  }, [createPeer, roomId]);
-
+  // Persistent listeners — registered once, never re-registered
   useEffect(() => {
     const socket = getSocket();
 
@@ -100,8 +104,11 @@ export function useWebRTC({
       await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
-      if (roomId) {
-        socket.emit("webrtc:answer", { roomId, sdp: answer });
+      if (roomIdRef.current) {
+        socket.emit("webrtc:answer", {
+          roomId: roomIdRef.current,
+          sdp: answer,
+        });
       }
     });
 
@@ -137,7 +144,7 @@ export function useWebRTC({
       socket.off("webrtc:ice-candidate");
       socket.off("webrtc:user-left");
     };
-  }, [createPeer, roomId]);
+  }, [createPeer]);
 
   useEffect(() => {
     return () => {

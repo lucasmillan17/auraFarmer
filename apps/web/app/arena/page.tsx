@@ -38,12 +38,22 @@ export default function ArenaPage() {
 
   const activeDetection = mode === "face" ? faceDetection : bodyDetection;
 
-  // WebRTC — pass reactive roomId from store
+  // WebRTC
   const { remoteStream, createOffer, createAnswer } = useWebRTC({
     roomId,
     localStream: stream,
     onRemoteStream: () => {},
   });
+
+  // Stable refs for WebRTC callbacks — prevent listener re-registration
+  const createOfferRef = useRef(createOffer);
+  createOfferRef.current = createOffer;
+  const createAnswerRef = useRef(createAnswer);
+  createAnswerRef.current = createAnswer;
+
+  // Stable ref for activeDetection.start
+  const activeDetectionRef = useRef(activeDetection);
+  activeDetectionRef.current = activeDetection;
 
   // Timer — duel end handler
   const { timeLeft, start: startTimer, stop: stopTimer } = useTimer(() => {
@@ -64,6 +74,9 @@ export default function ArenaPage() {
 
     setPhase("result");
   });
+
+  const startTimerRef = useRef(startTimer);
+  startTimerRef.current = startTimer;
 
   // Sync timeLeft into store for ArenaLayout/Timer to read
   useEffect(() => {
@@ -98,18 +111,15 @@ export default function ArenaPage() {
     };
   }, []);
 
-  // Listen for WebRTC peer joined — trigger offer/answer
+  // Listen for WebRTC peer joined — stable, never re-registers
   useEffect(() => {
     const socket = getSocket();
 
     const handleWebrtcReady = () => {
       if (playerSlotRef.current === "player1") {
-        createOffer();
-      } else {
-        createAnswer();
+        createOfferRef.current();
       }
 
-      // Start countdown after WebRTC connects
       setPhase("countdown");
       let count = 3;
       if (countdownRef.current) clearInterval(countdownRef.current);
@@ -118,9 +128,9 @@ export default function ArenaPage() {
         if (count <= 0) {
           if (countdownRef.current) clearInterval(countdownRef.current);
           setPhase("dueling");
-          activeDetection.start();
+          activeDetectionRef.current.start();
           const state = useMatchStore.getState();
-          startTimer(state.duration);
+          startTimerRef.current(state.duration);
         }
       }, 1000);
     };
@@ -140,16 +150,16 @@ export default function ArenaPage() {
       socket.off("webrtc:user-left", handleUserLeft);
       if (countdownRef.current) clearInterval(countdownRef.current);
     };
-  }, [createOffer, createAnswer]);
+  }, []);
 
-  // Join WebRTC room after listeners are registered
+  // Join WebRTC room
   useEffect(() => {
     if (!roomId) return;
     const socket = getSocket();
     socket.emit("webrtc:join-room", roomId);
   }, [roomId]);
 
-  // Override matchmaking:found to also store playerSlot for WebRTC role
+  // Listen for matchmaking:found — stable, never re-registers
   useEffect(() => {
     const socket = getSocket();
 
