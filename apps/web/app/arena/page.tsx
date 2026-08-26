@@ -142,6 +142,13 @@ export default function ArenaPage() {
     };
   }, [createOffer, createAnswer]);
 
+  // Join WebRTC room after listeners are registered
+  useEffect(() => {
+    if (!roomId) return;
+    const socket = getSocket();
+    socket.emit("webrtc:join-room", roomId);
+  }, [roomId]);
+
   // Override matchmaking:found to also store playerSlot for WebRTC role
   useEffect(() => {
     const socket = getSocket();
@@ -166,8 +173,6 @@ export default function ArenaPage() {
       const myRank = getRank(1200);
       setDuration(getDuelDuration(myRank.name));
       setRoomId(data.roomId);
-
-      socket.emit("webrtc:join-room", data.roomId);
     };
 
     socket.on("matchmaking:found", handleMatchFound);
