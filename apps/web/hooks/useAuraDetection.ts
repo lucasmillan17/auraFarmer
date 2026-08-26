@@ -6,7 +6,8 @@ import {
   FilesetResolver,
   type FaceLandmarkerResult,
 } from "@mediapipe/tasks-vision";
-import { FaceScoreBuffer, calculateFaceMetrics } from "@/lib/scoring/faceScoring";
+import { FaceScoringState } from "@/lib/scoring/faceScoring";
+import type { AuraEvent } from "@/lib/scoring/events";
 
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
@@ -16,7 +17,6 @@ const WASM_URL =
 interface UseAuraDetectionOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   enabled: boolean;
-  maxFrames?: number;
 }
 
 interface UseAuraDetectionReturn {
@@ -24,6 +24,7 @@ interface UseAuraDetectionReturn {
   isReady: boolean;
   isDetecting: boolean;
   fps: number;
+  events: AuraEvent[];
   start: () => Promise<void>;
   stop: () => void;
   reset: () => void;
@@ -32,15 +33,15 @@ interface UseAuraDetectionReturn {
 export function useAuraDetection({
   videoRef,
   enabled,
-  maxFrames = 300,
 }: UseAuraDetectionOptions): UseAuraDetectionReturn {
-  const [auraScore, setAuraScore] = useState(5.0);
+  const [auraScore, setAuraScore] = useState(0);
   const [isReady, setIsReady] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
   const [fps, setFps] = useState(0);
+  const [events, setEvents] = useState<AuraEvent[]>([]);
 
   const landmarkerRef = useRef<FaceLandmarker | null>(null);
-  const bufferRef = useRef(new FaceScoreBuffer(maxFrames));
+  const scoringRef = useRef(new FaceScoringState());
   const rafRef = useRef<number | null>(null);
   const lastTimeRef = useRef(-1);
   const frameCountRef = useRef(0);
@@ -82,9 +83,11 @@ export function useAuraDetection({
       );
 
       if (result.faceLandmarks && result.faceLandmarks.length > 0) {
-        const metrics = calculateFaceMetrics(result.faceLandmarks[0], null);
-        bufferRef.current.addFrame(metrics);
-        setAuraScore(bufferRef.current.getScore());
+        const frameResult = scoringRef.current.addFrame(result.faceLandmarks[0]);
+        setAuraScore(frameResult.score);
+        if (frameResult.events.length > 0) {
+          setEvents(frameResult.events);
+        }
       }
 
       // FPS counter
@@ -117,8 +120,9 @@ export function useAuraDetection({
   }, []);
 
   const reset = useCallback(() => {
-    bufferRef.current.reset();
-    setAuraScore(5.0);
+    scoringRef.current.reset();
+    setAuraScore(0);
+    setEvents([]);
   }, []);
 
   useEffect(() => {
@@ -127,5 +131,5 @@ export function useAuraDetection({
     };
   }, []);
 
-  return { auraScore, isReady, isDetecting, fps, start, stop, reset };
+  return { auraScore, isReady, isDetecting, fps, events, start, stop, reset };
 }

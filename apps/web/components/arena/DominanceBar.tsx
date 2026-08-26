@@ -17,10 +17,19 @@ export function DominanceBar({
   player2Label = "SIGMA",
   className,
 }: DominanceBarProps) {
-  const total = player1Score + player2Score || 1;
-  const p1Pct = (player1Score / total) * 100;
+  const p1 = Math.round(player1Score);
+  const p2 = Math.round(player2Score);
+
+  // Handle negative scores: shift everything so minimum is 0
+  const minScore = Math.min(p1, p2, 0);
+  const adjustedP1 = p1 - minScore;
+  const adjustedP2 = p2 - minScore;
+  const total = adjustedP1 + adjustedP2 || 1;
+  const p1Pct = (adjustedP1 / total) * 100;
+
   const isP1Dominating = p1Pct > 55;
   const isP2Dominating = p1Pct < 45;
+  const diff = Math.abs(p1 - p2);
 
   return (
     <div className={cn("w-full px-4", className)}>
@@ -54,22 +63,25 @@ export function DominanceBar({
       </div>
 
       {/* Score comparison */}
-      <div className="flex justify-between mt-1">
+      <div className="flex justify-between mt-1 items-center">
         <span
           className={cn(
-            "text-[10px] font-mono tabular-nums",
-            isP1Dominating ? "text-aura" : "text-muted"
+            "text-xs font-mono font-bold tabular-nums",
+            isP1Dominating ? "text-aura" : p1 >= 0 ? "text-text-secondary" : "text-red-500"
           )}
         >
-          {player1Score.toFixed(1)}
+          {p1 > 0 ? `+${p1}` : p1}
+        </span>
+        <span className="text-[9px] font-mono text-muted tabular-nums">
+          {diff > 0 ? `+${diff}` : "TIE"}
         </span>
         <span
           className={cn(
-            "text-[10px] font-mono tabular-nums",
-            isP2Dominating ? "text-aura" : "text-muted"
+            "text-xs font-mono font-bold tabular-nums",
+            isP2Dominating ? "text-aura" : p2 >= 0 ? "text-text-secondary" : "text-red-500"
           )}
         >
-          {player2Score.toFixed(1)}
+          {p2 > 0 ? `+${p2}` : p2}
         </span>
       </div>
     </div>

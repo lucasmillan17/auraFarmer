@@ -6,7 +6,8 @@ import {
   FilesetResolver,
   type PoseLandmarkerResult,
 } from "@mediapipe/tasks-vision";
-import { BodyScoreBuffer } from "@/lib/scoring/bodyScoring";
+import { BodyScoringState } from "@/lib/scoring/bodyScoring";
+import type { AuraEvent } from "@/lib/scoring/events";
 
 const POSE_MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
@@ -16,7 +17,6 @@ const WASM_URL =
 interface UseBodyDetectionOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   enabled: boolean;
-  maxFrames?: number;
 }
 
 interface UseBodyDetectionReturn {
@@ -24,6 +24,7 @@ interface UseBodyDetectionReturn {
   isReady: boolean;
   isDetecting: boolean;
   fps: number;
+  events: AuraEvent[];
   start: () => Promise<void>;
   stop: () => void;
   reset: () => void;
@@ -32,15 +33,15 @@ interface UseBodyDetectionReturn {
 export function useBodyDetection({
   videoRef,
   enabled,
-  maxFrames = 300,
 }: UseBodyDetectionOptions): UseBodyDetectionReturn {
-  const [auraScore, setAuraScore] = useState(5.0);
+  const [auraScore, setAuraScore] = useState(0);
   const [isReady, setIsReady] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
   const [fps, setFps] = useState(0);
+  const [events, setEvents] = useState<AuraEvent[]>([]);
 
   const landmarkerRef = useRef<PoseLandmarker | null>(null);
-  const bufferRef = useRef(new BodyScoreBuffer(maxFrames));
+  const scoringRef = useRef(new BodyScoringState());
   const rafRef = useRef<number | null>(null);
   const lastTimeRef = useRef(-1);
   const frameCountRef = useRef(0);
@@ -79,8 +80,11 @@ export function useBodyDetection({
       const result: PoseLandmarkerResult = landmarker.detectForVideo(video, now);
 
       if (result.landmarks && result.landmarks.length > 0) {
-        bufferRef.current.addFrame(result.landmarks[0]);
-        setAuraScore(bufferRef.current.getScore());
+        const frameResult = scoringRef.current.addFrame(result.landmarks[0]);
+        setAuraScore(frameResult.score);
+        if (frameResult.events.length > 0) {
+          setEvents(frameResult.events);
+        }
       }
 
       frameCountRef.current++;
@@ -112,9 +116,10 @@ export function useBodyDetection({
   }, []);
 
   const reset = useCallback(() => {
-    bufferRef.current.reset();
-    setAuraScore(5.0);
+    scoringRef.current.reset();
+    setAuraScore(0);
+    setEvents([]);
   }, []);
 
-  return { auraScore, isReady, isDetecting, fps, start, stop, reset };
+  return { auraScore, isReady, isDetecting, fps, events, start, stop, reset };
 }

@@ -13,6 +13,7 @@ import { getDuelDuration, getRank } from "@/lib/ranks";
 import { ArenaLayout } from "@/components/arena/ArenaLayout";
 import { ModeSelector } from "@/components/arena/ModeSelector";
 import { Navbar } from "@/components/shared/Navbar";
+import type { AuraEvent } from "@/lib/scoring/events";
 
 export default function ArenaPage() {
   const { phase, mode, roomId, me, rival, setPhase, setMe, setRival, setRoomId, setDuration, updateScore, setTimeLeft, setWinner } =
@@ -21,6 +22,7 @@ export default function ArenaPage() {
   const { joinMatchmaking, leaveMatchmaking } = useMatchmaking();
   const [nickname] = useState(() => `Player_${Math.random().toString(36).slice(2, 6)}`);
   const [connected, setConnected] = useState(false);
+  const [myEvents, setMyEvents] = useState<AuraEvent[]>([]);
   const playerSlotRef = useRef<"player1" | "player2" | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -45,7 +47,7 @@ export default function ArenaPage() {
     onRemoteStream: () => {},
   });
 
-  // Stable refs for WebRTC callbacks — prevent listener re-registration
+  // Stable refs for WebRTC callbacks
   const createOfferRef = useRef(createOffer);
   createOfferRef.current = createOffer;
   const createAnswerRef = useRef(createAnswer);
@@ -55,7 +57,7 @@ export default function ArenaPage() {
   const activeDetectionRef = useRef(activeDetection);
   activeDetectionRef.current = activeDetection;
 
-  // Timer — duel end handler
+  // Timer
   const { timeLeft, start: startTimer, stop: stopTimer } = useTimer(() => {
     const state = useMatchStore.getState();
     const myScore = state.me?.score ?? 0;
@@ -78,7 +80,7 @@ export default function ArenaPage() {
   const startTimerRef = useRef(startTimer);
   startTimerRef.current = startTimer;
 
-  // Sync timeLeft into store for ArenaLayout/Timer to read
+  // Sync timeLeft into store
   useEffect(() => {
     setTimeLeft(timeLeft);
   }, [timeLeft, setTimeLeft]);
@@ -103,7 +105,7 @@ export default function ArenaPage() {
       elo: 1200,
       rank: getRank(1200).name,
       country: "MX",
-      score: 5.0,
+      score: 0,
     });
     return () => {
       socket.off("connect", onConnect);
@@ -111,7 +113,7 @@ export default function ArenaPage() {
     };
   }, []);
 
-  // Listen for WebRTC peer joined — stable, never re-registers
+  // Listen for WebRTC peer joined
   useEffect(() => {
     const socket = getSocket();
 
@@ -159,7 +161,7 @@ export default function ArenaPage() {
     socket.emit("webrtc:join-room", roomId);
   }, [roomId]);
 
-  // Listen for matchmaking:found — stable, never re-registers
+  // Listen for matchmaking:found
   useEffect(() => {
     const socket = getSocket();
 
@@ -179,7 +181,7 @@ export default function ArenaPage() {
           elo: 1200,
           rank: getRank(1200).name,
           country: "MX",
-          score: 5.0,
+          score: 0,
         });
       }
 
@@ -190,7 +192,7 @@ export default function ArenaPage() {
         elo: data.opponent.elo,
         rank: rank.name,
         country: "??",
-        score: 5.0,
+        score: 0,
       });
 
       const myRank = getRank(1200);
@@ -204,7 +206,25 @@ export default function ArenaPage() {
     };
   }, [setRival, setDuration, setRoomId, setMe]);
 
-  // Broadcast my score periodically during duel
+  // Collect events from detection and update score
+  useEffect(() => {
+    if (phase !== "dueling") return;
+    const currentEvents = activeDetection.events;
+    if (currentEvents.length > 0) {
+      setMyEvents(currentEvents);
+      const state = useMatchStore.getState();
+      if (state.me) {
+        const score = activeDetection.auraScore;
+        getSocket().emit("score:update", {
+          playerId: state.me.id,
+          score,
+        });
+        updateScore(state.me.id, score);
+      }
+    }
+  }, [phase, activeDetection.events]);
+
+  // Periodic score broadcast (fallback for opponent sync)
   useEffect(() => {
     if (phase !== "dueling") return;
 
@@ -218,7 +238,7 @@ export default function ArenaPage() {
         });
         updateScore(state.me.id, score);
       }
-    }, 200);
+    }, 300);
 
     return () => clearInterval(interval);
   }, [phase, activeDetection.auraScore]);
@@ -281,6 +301,7 @@ export default function ArenaPage() {
       localVideoRef={videoRef}
       localStream={stream}
       remoteStream={remoteStream}
+      myEvents={myEvents}
     />
   );
 }

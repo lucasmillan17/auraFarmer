@@ -1,21 +1,19 @@
 /**
- * Face scoring metrics based on MediaPipe Face Landmarker landmarks.
+ * Face scoring — event-based detection using MediaPipe Face Landmarker.
+ *
+ * Instead of continuous metrics, each frame is analyzed for discrete events
+ * (wink, blink, smile, etc.) that add or subtract points from a cumulative score.
  *
  * Landmark reference:
  * - Iris: 468 (left center), 473 (right center)
  * - Eyes: 33/133 (left corners), 263/362 (right corners)
  * - Eyelids: 159/145 (left), 386/374 (right)
+ * - Eyebrows: 107/105 (left), 336/334 (right)
  * - Nose: 4 (tip), 10 (forehead), 152 (chin)
  * - Mouth: 13/14 (lips), 61/291 (corners)
  */
 
-export interface FaceMetrics {
-  gazeStability: number;
-  headPose: number;
-  blinkPenalty: number;
-  expressionPenalty: number;
-  presenceGate: boolean;
-}
+import { type AuraEvent, FACE_EVENTS } from "./events";
 
 export interface Landmark {
   x: number;
@@ -23,132 +21,233 @@ export interface Landmark {
   z: number;
 }
 
-export function calculateFaceMetrics(
-  landmarks: Landmark[],
-  prevMetrics: FaceMetrics | null
-): FaceMetrics {
-  // Gaze stability: iris centered in eye
-  const leftIrisX = landmarks[468]?.x ?? 0.5;
-  const leftEyeCenter =
-    ((landmarks[33]?.x ?? 0) + (landmarks[133]?.x ?? 0)) / 2;
-  const leftGazeOffset = Math.abs(leftIrisX - leftEyeCenter);
-
-  const rightIrisX = landmarks[473]?.x ?? 0.5;
-  const rightEyeCenter =
-    ((landmarks[263]?.x ?? 0) + (landmarks[362]?.x ?? 0)) / 2;
-  const rightGazeOffset = Math.abs(rightIrisX - rightEyeCenter);
-
-  const avgGazeOffset = (leftGazeOffset + rightGazeOffset) / 2;
-  const gazeStability = Math.max(0, 1 - avgGazeOffset * 15);
-
-  // Head pose: deviation from center
-  const noseX = landmarks[4]?.x ?? 0.5;
-  const foreheadX = landmarks[10]?.x ?? 0.5;
-  const chinY = landmarks[152]?.y ?? 0.5;
-  const foreheadY = landmarks[10]?.y ?? 0.2;
-
-  const yaw = Math.abs(noseX - 0.5);
-  const pitch = Math.abs(
-    (landmarks[4]?.y ?? 0.5) - (foreheadY + chinY) / 2
-  );
-  const headDeviation = yaw + pitch;
-  const headPose = Math.max(0, 1 - headDeviation * 5);
-
-  // Blink detection (EAR - Eye Aspect Ratio)
-  const leftEAR =
-    Math.abs((landmarks[159]?.y ?? 0) - (landmarks[145]?.y ?? 0)) /
-    Math.max(
-      Math.abs((landmarks[33]?.x ?? 0) - (landmarks[133]?.x ?? 0)),
-      0.001
-    );
-  const rightEAR =
-    Math.abs((landmarks[386]?.y ?? 0) - (landmarks[374]?.y ?? 0)) /
-    Math.max(
-      Math.abs((landmarks[263]?.x ?? 0) - (landmarks[362]?.x ?? 0)),
-      0.001
-    );
-  const avgEAR = (leftEAR + rightEAR) / 2;
-  const isBlinking = avgEAR < 0.18;
-
-  // Expression control: smile detection
-  const mouthHeight =
-    Math.abs(
-      (landmarks[13]?.y ?? 0) - (landmarks[14]?.y ?? 0)
-    );
-  const leftCornerRise =
-    (landmarks[13]?.y ?? 0) - (landmarks[61]?.y ?? 0);
-  const rightCornerRise =
-    (landmarks[13]?.y ?? 0) - (landmarks[291]?.y ?? 0);
-  const smileAmount =
-    (leftCornerRise + rightCornerRise) / 2;
-  const isSmiling = smileAmount > 0.008 || mouthHeight > 0.03;
-
-  // Presence gate: face confidence
-  const faceWidth = Math.abs(
-    (landmarks[234]?.x ?? 0) - (landmarks[454]?.x ?? 0)
-  );
-  const presenceGate = faceWidth > 0.1;
-
-  return {
-    gazeStability,
-    headPose,
-    blinkPenalty: isBlinking ? -0.05 : 0,
-    expressionPenalty: isSmiling ? -0.08 : 0,
-    presenceGate,
-  };
+export interface FaceFrameResult {
+  score: number;
+  events: AuraEvent[];
 }
 
-/**
- * Aggregate face metrics into a 0-10 aura score.
- * Uses trimmed mean over a buffer of frames.
- */
-export class FaceScoreBuffer {
-  private buffer: number[] = [];
-  private readonly maxFrames: number;
+interface CooldownEntry {
+  lastFired: number;
+}
 
-  constructor(maxFrames: number = 300) {
-    this.maxFrames = maxFrames;
-  }
+export class FaceScoringState {
+  score = 0;
+  private cooldowns: Map<string, CooldownEntry> = new Map();
+  private negativeEventCount = 0;
+  private lastNegativeTime = 0;
+  private stableFrames = 0;
+  private neutralFrames = 0;
 
-  addFrame(metrics: FaceMetrics): void {
-    if (!metrics.presenceGate) return;
+  addFrame(landmarks: Landmark[]): FaceFrameResult {
+    const now = Date.now();
+    const events: AuraEvent[] = [];
 
-    const frameScore =
-      (metrics.gazeStability * 0.15 +
-        metrics.headPose * 0.1 +
-        metrics.blinkPenalty +
-        metrics.expressionPenalty) *
-      10;
+    // --- EAR (Eye Aspect Ratio) ---
+    const leftEAR = this.calcEAR(landmarks, "left");
+    const rightEAR = this.calcEAR(landmarks, "right");
+    const avgEAR = (leftEAR + rightEAR) / 2;
 
-    this.buffer.push(Math.max(0, Math.min(10, frameScore)));
+    const isLeftClosed = leftEAR < 0.15;
+    const isRightClosed = rightEAR < 0.15;
+    const isLeftOpen = leftEAR > 0.20;
+    const isRightOpen = rightEAR > 0.20;
 
-    if (this.buffer.length > this.maxFrames) {
-      this.buffer.shift();
+    // --- Gaze offset ---
+    const leftGazeOffset = this.calcGazeOffset(landmarks, "left");
+    const rightGazeOffset = this.calcGazeOffset(landmarks, "right");
+    const avgGazeOffset = (leftGazeOffset + rightGazeOffset) / 2;
+
+    // --- Smile detection ---
+    const smileAmount = this.calcSmile(landmarks);
+
+    // --- Eyebrow raise ---
+    const browRaise = this.calcBrowRaise(landmarks);
+
+    // --- Mouth open ---
+    const mouthGap = this.calcMouthOpen(landmarks);
+
+    // --- Head pose (chin up / pitch) ---
+    const chinUp = this.calcChinUp(landmarks);
+
+    // --- Neutral face (no smile, no open mouth) ---
+    const isNeutral = smileAmount < 0.005 && mouthGap < 0.02;
+
+    // === EVENT DETECTION ===
+
+    // Wink: one eye closed, other open
+    if (isLeftClosed && isRightOpen) {
+      const fired = this.tryFire("wink", now);
+      if (fired) events.push(fired);
+    } else if (isRightClosed && isLeftOpen) {
+      const fired = this.tryFire("wink", now);
+      if (fired) events.push(fired);
     }
-  }
 
-  getScore(): number {
-    if (this.buffer.length === 0) return 5.0;
+    // Blink: both eyes closed
+    if (isLeftClosed && isRightClosed) {
+      const fired = this.tryFire("blink", now);
+      if (fired) events.push(fired);
+      this.negativeEventCount++;
+      this.lastNegativeTime = now;
+    }
 
-    // Trimmed mean: remove top/bottom 10%
-    const sorted = [...this.buffer].sort((a, b) => a - b);
-    const trimCount = Math.floor(sorted.length * 0.1);
-    const trimmed = sorted.slice(
-      trimCount,
-      sorted.length - trimCount
-    );
+    // Smile
+    if (smileAmount > 0.01) {
+      const fired = this.tryFire("smile", now);
+      if (fired) events.push(fired);
+    }
 
-    if (trimmed.length === 0) return 5.0;
+    // Raised eyebrow
+    if (browRaise > 0.012) {
+      const fired = this.tryFire("raisedBrow", now);
+      if (fired) events.push(fired);
+    }
 
-    const sum = trimmed.reduce((a, b) => a + b, 0);
-    return Math.round((sum / trimmed.length) * 10) / 10;
+    // Mouth open (surprised / talking)
+    if (mouthGap > 0.035) {
+      const fired = this.tryFire("mouthOpen", now);
+      if (fired) {
+        events.push(fired);
+        this.negativeEventCount++;
+        this.lastNegativeTime = now;
+      }
+    }
+
+    // Look away
+    if (avgGazeOffset > 0.06) {
+      const fired = this.tryFire("lookAway", now);
+      if (fired) {
+        events.push(fired);
+        this.negativeEventCount++;
+        this.lastNegativeTime = now;
+      }
+    }
+
+    // Chin up (confident pose — head pitched slightly down)
+    if (chinUp > 0.06) {
+      const fired = this.tryFire("chinUp", now);
+      if (fired) events.push(fired);
+    }
+
+    // Stare: stable gaze + neutral face for many frames
+    if (avgGazeOffset < 0.02 && isNeutral) {
+      this.stableFrames++;
+    } else {
+      this.stableFrames = 0;
+    }
+    if (this.stableFrames > 90) { // ~3s at 30fps
+      const fired = this.tryFire("stare", now);
+      if (fired) {
+        events.push(fired);
+        this.stableFrames = 0;
+      }
+    }
+
+    // Composure: no negative events for 2s
+    const timeSinceNegative = now - this.lastNegativeTime;
+    if (timeSinceNegative > 2000 && this.lastNegativeTime > 0) {
+      const fired = this.tryFire("composure", now);
+      if (fired) events.push(fired);
+    }
+
+    // Track neutral frames
+    if (isNeutral) {
+      this.neutralFrames++;
+    } else {
+      this.neutralFrames = 0;
+    }
+
+    // Apply event points
+    for (const evt of events) {
+      this.score += evt.points;
+    }
+
+    return { score: this.score, events };
   }
 
   reset(): void {
-    this.buffer = [];
+    this.score = 0;
+    this.cooldowns.clear();
+    this.negativeEventCount = 0;
+    this.lastNegativeTime = 0;
+    this.stableFrames = 0;
+    this.neutralFrames = 0;
   }
 
-  get frameCount(): number {
-    return this.buffer.length;
+  private tryFire(eventKey: string, now: number): AuraEvent | null {
+    const def = FACE_EVENTS[eventKey];
+    if (!def) return null;
+
+    const cooldown = this.cooldowns.get(eventKey);
+    if (cooldown && now - cooldown.lastFired < def.cooldownMs) {
+      return null;
+    }
+
+    this.cooldowns.set(eventKey, { lastFired: now });
+
+    return {
+      id: `${eventKey}-${now}`,
+      label: def.label,
+      points: def.points,
+      type: def.points >= 0 ? "positive" : "negative",
+    };
+  }
+
+  private calcEAR(lm: Landmark[], side: "left" | "right"): number {
+    const topLid = side === "left" ? 159 : 386;
+    const botLid = side === "left" ? 145 : 374;
+    const inner = side === "left" ? 33 : 263;
+    const outer = side === "left" ? 133 : 362;
+
+    const vertical = Math.abs((lm[topLid]?.y ?? 0) - (lm[botLid]?.y ?? 0));
+    const horizontal = Math.abs((lm[inner]?.x ?? 0) - (lm[outer]?.x ?? 0));
+
+    return vertical / Math.max(horizontal, 0.001);
+  }
+
+  private calcGazeOffset(lm: Landmark[], side: "left" | "right"): number {
+    const iris = side === "left" ? 468 : 473;
+    const inner = side === "left" ? 33 : 263;
+    const outer = side === "left" ? 133 : 362;
+
+    const irisX = lm[iris]?.x ?? 0.5;
+    const eyeCenter = ((lm[inner]?.x ?? 0) + (lm[outer]?.x ?? 0)) / 2;
+    return Math.abs(irisX - eyeCenter);
+  }
+
+  private calcSmile(lm: Landmark[]): number {
+    const lipTop = lm[13]?.y ?? 0;
+    const cornerLeft = lm[61]?.y ?? 0;
+    const cornerRight = lm[291]?.y ?? 0;
+
+    const leftRise = lipTop - cornerLeft;
+    const rightRise = lipTop - cornerRight;
+    return (leftRise + rightRise) / 2;
+  }
+
+  private calcBrowRaise(lm: Landmark[]): number {
+    const leftBrow = lm[105]?.y ?? 0;
+    const leftEye = lm[159]?.y ?? 0;
+    const rightBrow = lm[334]?.y ?? 0;
+    const rightEye = lm[386]?.y ?? 0;
+
+    const leftGap = leftEye - leftBrow; // y increases downward
+    const rightGap = rightEye - rightBrow;
+    return (leftGap + rightGap) / 2;
+  }
+
+  private calcMouthOpen(lm: Landmark[]): number {
+    const upperLip = lm[13]?.y ?? 0;
+    const lowerLip = lm[14]?.y ?? 0;
+    return Math.abs(upperLip - lowerLip);
+  }
+
+  private calcChinUp(lm: Landmark[]): number {
+    const noseTip = lm[4]?.y ?? 0.5;
+    const forehead = lm[10]?.y ?? 0.2;
+    const chin = lm[152]?.y ?? 0.8;
+
+    const faceMid = (forehead + chin) / 2;
+    return Math.abs(noseTip - faceMid);
   }
 }
