@@ -15,7 +15,7 @@ import { ModeSelector } from "@/components/arena/ModeSelector";
 import { Navbar } from "@/components/shared/Navbar";
 
 export default function ArenaPage() {
-  const { phase, mode, roomId, me, rival, setPhase, setMe, setRival, setDuration, updateScore, setTimeLeft, setWinner } =
+  const { phase, mode, roomId, me, rival, setPhase, setMe, setRival, setRoomId, setDuration, updateScore, setTimeLeft, setWinner } =
     useMatchStore();
   const { videoRef, stream, start: startCam, stop: stopCam } = useWebcam();
   const { joinMatchmaking, leaveMatchmaking } = useMatchmaking();
@@ -165,13 +165,16 @@ export default function ArenaPage() {
 
       const myRank = getRank(1200);
       setDuration(getDuelDuration(myRank.name));
+      setRoomId(data.roomId);
+
+      socket.emit("webrtc:join-room", data.roomId);
     };
 
     socket.on("matchmaking:found", handleMatchFound);
     return () => {
       socket.off("matchmaking:found", handleMatchFound);
     };
-  }, [setRival, setDuration]);
+  }, [setRival, setDuration, setRoomId]);
 
   // Broadcast my score periodically during duel
   useEffect(() => {
