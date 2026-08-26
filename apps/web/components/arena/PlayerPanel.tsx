@@ -9,6 +9,7 @@ import { PlayerBadge } from "./PlayerBadge";
 interface PlayerPanelProps {
   videoRef?: React.RefObject<HTMLVideoElement | null>;
   remoteStream?: MediaStream | null;
+  localStream?: MediaStream | null;
   nickname: string;
   elo: number;
   country: string;
@@ -21,6 +22,7 @@ interface PlayerPanelProps {
 export function PlayerPanel({
   videoRef,
   remoteStream,
+  localStream,
   nickname,
   elo,
   country,
@@ -32,14 +34,20 @@ export function PlayerPanel({
   return (
     <div
       className={cn(
-        "relative flex-1 rounded-3xl overflow-hidden border border-border",
+        "relative flex-1 min-h-0 min-w-0 rounded-3xl overflow-hidden border border-border",
         "bg-surface",
         className
       )}
     >
       {/* Video */}
       <video
-        ref={videoRef}
+        ref={(el) => {
+          if (!videoRef) return;
+          (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
+          if (el && localStream && el.srcObject !== localStream) {
+            el.srcObject = localStream;
+          }
+        }}
         autoPlay
         playsInline
         muted={isYou}

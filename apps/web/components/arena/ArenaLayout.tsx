@@ -9,19 +9,21 @@ import type { RefObject } from "react";
 
 interface ArenaLayoutProps {
   localVideoRef: RefObject<HTMLVideoElement | null>;
-  remoteStream: MediaStream | null; // global MediaStream from lib.dom.d.ts
+  localStream: MediaStream | null;
+  remoteStream: MediaStream | null;
 }
 
-export function ArenaLayout({ localVideoRef, remoteStream }: ArenaLayoutProps) {
+export function ArenaLayout({ localVideoRef, localStream, remoteStream }: ArenaLayoutProps) {
   const { me, rival, timeLeft, duration, phase, winner } = useMatchStore();
 
   if (!me || !rival) return null;
 
   return (
-    <div className="relative flex flex-col h-dvh bg-void p-3 gap-2">
-      {/* Top player (YOU) */}
+    <div className="relative flex flex-col md:flex-row h-dvh bg-void p-3 gap-2">
+      {/* YOU */}
       <PlayerPanel
         videoRef={localVideoRef}
+        localStream={localStream}
         nickname={me.nickname}
         elo={me.elo}
         country={me.country}
@@ -31,11 +33,11 @@ export function ArenaLayout({ localVideoRef, remoteStream }: ArenaLayoutProps) {
       />
 
       {/* Center overlay: Timer */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
         <Timer timeLeft={timeLeft} duration={duration} />
       </div>
 
-      {/* Bottom player (RIVAL) */}
+      {/* RIVAL */}
       <PlayerPanel
         remoteStream={remoteStream}
         nickname={rival.nickname}
@@ -47,7 +49,7 @@ export function ArenaLayout({ localVideoRef, remoteStream }: ArenaLayoutProps) {
       />
 
       {/* Bottom dominance bar */}
-      <div className="absolute bottom-0 left-0 right-0 pb-3 px-4 z-10">
+      <div className="absolute bottom-0 left-0 right-0 pb-3 px-4 z-10 pointer-events-none">
         <DominanceBar
           player1Score={me.score}
           player2Score={rival.score}

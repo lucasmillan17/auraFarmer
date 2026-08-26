@@ -54,5 +54,12 @@ export function useWebcam(): UseWebcamReturn {
     };
   }, [stream]);
 
+  // Sync stream to video element whenever either becomes available
+  useEffect(() => {
+    if (stream && videoRef.current && videoRef.current.srcObject !== stream) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
+
   return { videoRef, stream, start, stop, isActive, error };
 }

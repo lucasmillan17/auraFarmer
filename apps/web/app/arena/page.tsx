@@ -266,6 +266,7 @@ export default function ArenaPage() {
   return (
     <ArenaLayout
       localVideoRef={videoRef}
+      localStream={stream}
       remoteStream={remoteStream}
     />
   );
