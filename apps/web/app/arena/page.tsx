@@ -20,6 +20,7 @@ export default function ArenaPage() {
   const { videoRef, stream, start: startCam, stop: stopCam } = useWebcam();
   const { joinMatchmaking, leaveMatchmaking } = useMatchmaking();
   const [nickname] = useState(() => `Player_${Math.random().toString(36).slice(2, 6)}`);
+  const [connected, setConnected] = useState(false);
   const playerSlotRef = useRef<"player1" | "player2" | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -78,6 +79,11 @@ export default function ArenaPage() {
   // Init me user
   useEffect(() => {
     const socket = getSocket();
+    setConnected(socket.connected);
+    const onConnect = () => setConnected(true);
+    const onDisconnect = () => setConnected(false);
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
     setMe({
       id: socket.id || "local",
       nickname,
@@ -86,6 +92,10 @@ export default function ArenaPage() {
       country: "MX",
       score: 5.0,
     });
+    return () => {
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+    };
   }, []);
 
   // Listen for WebRTC peer joined — trigger offer/answer
@@ -210,10 +220,10 @@ export default function ArenaPage() {
 
           <button
             onClick={() => joinMatchmaking(mode, me?.elo ?? 1200)}
-            disabled={phase === "matchmaking"}
+            disabled={phase === "matchmaking" || !connected}
             className="px-8 py-3 rounded-2xl font-mono font-semibold text-sm uppercase tracking-wider bg-aura text-void hover:bg-aura-bright transition-all duration-200 disabled:opacity-50 shadow-[0_0_20px_oklch(0.78_0.15_85_/_0.25)]"
           >
-            {phase === "matchmaking" ? "SEARCHING..." : "START DUEL"}
+            {!connected ? "CONNECTING..." : phase === "matchmaking" ? "SEARCHING..." : "START DUEL"}
           </button>
 
           {phase === "matchmaking" && (
