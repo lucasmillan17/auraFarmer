@@ -24,7 +24,7 @@ export function ArenaLayout({ localVideoRef, localStream, remoteStream, myEvents
   return (
     <div className="relative flex flex-col md:flex-row h-dvh bg-void p-3 gap-2">
       {/* YOU */}
-      <div className="relative flex-1 min-h-0 min-w-0">
+      <div className="relative flex-1 min-h-0 min-w-0 rounded-3xl overflow-hidden border border-border bg-surface">
         <PlayerPanel
           videoRef={localVideoRef}
           localStream={localStream}
@@ -34,12 +34,10 @@ export function ArenaLayout({ localVideoRef, localStream, remoteStream, myEvents
           rank={me.rank}
           score={me.score}
           isYou={true}
-          className="h-full"
+          className="h-full border-0"
         />
-        {/* Event toasts over your panel */}
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-20">
-          <EventToast events={myEvents} />
-        </div>
+        {/* Event toasts scattered over your camera */}
+        <EventToast events={myEvents} />
       </div>
 
       {/* Center overlay: Timer */}
@@ -48,7 +46,7 @@ export function ArenaLayout({ localVideoRef, localStream, remoteStream, myEvents
       </div>
 
       {/* RIVAL */}
-      <div className="relative flex-1 min-h-0 min-w-0">
+      <div className="relative flex-1 min-h-0 min-w-0 rounded-3xl overflow-hidden border border-border bg-surface">
         <PlayerPanel
           remoteStream={remoteStream}
           nickname={rival.nickname}
@@ -57,7 +55,7 @@ export function ArenaLayout({ localVideoRef, localStream, remoteStream, myEvents
           rank={rival.rank}
           score={rival.score}
           isYou={false}
-          className="h-full"
+          className="h-full border-0"
         />
       </div>
 

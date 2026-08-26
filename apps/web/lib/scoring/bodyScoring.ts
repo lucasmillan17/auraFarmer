@@ -211,6 +211,7 @@ export class BodyScoringState {
     return {
       id: `${eventKey}-${now}`,
       label: def.label,
+      emoji: def.emoji,
       points: def.points,
       type: def.points >= 0 ? "positive" : "negative",
     };
