@@ -170,6 +170,19 @@ export default function ArenaPage() {
     }) => {
       playerSlotRef.current = data.you;
 
+      const socket = getSocket();
+      const currentState = useMatchStore.getState();
+      if (!currentState.me) {
+        setMe({
+          id: socket.id || "local",
+          nickname,
+          elo: 1200,
+          rank: getRank(1200).name,
+          country: "MX",
+          score: 5.0,
+        });
+      }
+
       const rank = getRank(data.opponent.elo);
       setRival({
         id: data.opponent.userId,
@@ -189,7 +202,7 @@ export default function ArenaPage() {
     return () => {
       socket.off("matchmaking:found", handleMatchFound);
     };
-  }, [setRival, setDuration, setRoomId]);
+  }, [setRival, setDuration, setRoomId, setMe]);
 
   // Broadcast my score periodically during duel
   useEffect(() => {

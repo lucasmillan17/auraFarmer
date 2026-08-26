@@ -4,15 +4,24 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useMatchStore } from "@/stores/matchStore";
 import { getRank } from "@/lib/ranks";
 import { RankBadge } from "./RankBadge";
+import { getSocket } from "@/lib/socket";
 
 export function MatchResult() {
-  const { me, rival, winner, reset } = useMatchStore();
+  const { me, rival, winner, roomId, reset } = useMatchStore();
   if (!me || !rival || !winner) return null;
 
   const isWinner = winner === me.id;
   const winnerPlayer = isWinner ? me : rival;
   const loserPlayer = isWinner ? rival : me;
   const winnerRank = getRank(winnerPlayer.elo);
+
+  const handleReturnToLobby = () => {
+    if (roomId) {
+      const socket = getSocket();
+      socket.emit("webrtc:leave-room", roomId);
+    }
+    reset();
+  };
 
   return (
     <AnimatePresence>
@@ -79,7 +88,7 @@ export function MatchResult() {
 
           {/* Back button */}
           <button
-            onClick={reset}
+            onClick={handleReturnToLobby}
             className="w-full py-3 rounded-2xl border border-border bg-surface hover:bg-surface-elevated text-text-secondary hover:text-text-bright transition-all duration-200 font-mono text-sm uppercase tracking-wider"
           >
             Return to Lobby

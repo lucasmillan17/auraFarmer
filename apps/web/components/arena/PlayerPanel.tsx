@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { getRank } from "@/lib/ranks";
 import { AuraScore } from "./AuraScore";
@@ -31,6 +32,32 @@ export function PlayerPanel({
   isYou = false,
   className,
 }: PlayerPanelProps) {
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  // Attach local stream — runs when stream or element changes
+  useEffect(() => {
+    const el = localVideoRef.current;
+    if (el && localStream && el.srcObject !== localStream) {
+      el.srcObject = localStream;
+    }
+  }, [localStream]);
+
+  // Sync localVideoRef back to parent useWebcam ref
+  useEffect(() => {
+    if (videoRef) {
+      (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = localVideoRef.current;
+    }
+  });
+
+  // Attach remote stream — only runs when stream changes
+  useEffect(() => {
+    const el = remoteVideoRef.current;
+    if (el && remoteStream && el.srcObject !== remoteStream) {
+      el.srcObject = remoteStream;
+    }
+  }, [remoteStream]);
+
   return (
     <div
       className={cn(
@@ -39,15 +66,9 @@ export function PlayerPanel({
         className
       )}
     >
-      {/* Video */}
+      {/* Local video */}
       <video
-        ref={(el) => {
-          if (!videoRef) return;
-          (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = el;
-          if (el && localStream && el.srcObject !== localStream) {
-            el.srcObject = localStream;
-          }
-        }}
+        ref={localVideoRef}
         autoPlay
         playsInline
         muted={isYou}
@@ -57,15 +78,13 @@ export function PlayerPanel({
         }}
       />
 
-      {/* Remote video via srcObject */}
-      {!isYou && remoteStream && (
+      {/* Remote video overlay — only for rival */}
+      {!isYou && (
         <video
+          ref={remoteVideoRef}
           autoPlay
           playsInline
           className="absolute inset-0 w-full h-full object-cover"
-          ref={(el) => {
-            if (el && remoteStream) el.srcObject = remoteStream;
-          }}
         />
       )}
 
